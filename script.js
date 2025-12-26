@@ -1,12 +1,13 @@
 // ===============================
-// CONFIGURAÇÃO
+// CONFIGURAÇÃO DE PERFORMANCE
 // ===============================
-
-// Quantas cartas aparecem no total (inclui a forçada)
 const CARDS_TO_SHOW = 25;
-
-// Quantas cartas ANTES do final o force aparece
 const FORCE_OFFSET_FROM_END = 7;
+const FORCE_EXTRA_DELAY = 220;
+
+const SPEED_START = 60;
+const SPEED_END = 38;
+const AFTER_FLUSH_DELAY = 120;
 
 // ===============================
 // BARALHO — MNEMONICA ROTACIONADA
@@ -24,25 +25,17 @@ const cardImg = document.getElementById("card");
 const indicator = document.getElementById("swipe-indicator");
 
 // ===============================
-// FORCE STATE
-// ===============================
-let forcedOverride = null;
-let forcedRunsLeft = 0;
-let forceThisRun = null;
-
-// ===============================
-// VELOCIDADES
-// ===============================
-const SPEED_START = 60;
-const SPEED_END   = 38;
-const LAST_CARD_EXIT_DELAY = 120;
-
+// ESTADO
 // ===============================
 let sequence = [];
 let index = 0;
 let running = false;
 let timer = null;
 let awaitingRetry = false;
+
+let forcedOverride = null;
+let forcedRunsLeft = 0;
+let forceIndexThisRun = -1;
 
 // ===============================
 // PRÉ-CARREGAMENTO
@@ -52,12 +45,11 @@ deck.forEach(c => {
   img.src = `cards/${c}.png`;
 });
 
-function getRandomCard() {
-  return deck[Math.floor(Math.random() * deck.length)];
-}
+const randomCard = () =>
+  deck[Math.floor(Math.random() * deck.length)];
 
 // ===============================
-// PREPARA SEQUÊNCIA (force antes do final)
+// PREPARA SEQUÊNCIA (force configurável)
 // ===============================
 function prepareDeck(force) {
   const pool = deck.filter(c => c !== force);
@@ -74,14 +66,13 @@ function prepareDeck(force) {
   const slice = pool.slice(0, total - 1);
   slice.splice(forceIndex, 0, force);
 
+  forceIndexThisRun = forceIndex;
   return slice;
 }
 
 function clearTimer() {
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
-  }
+  if (timer) clearTimeout(timer);
+  timer = null;
 }
 
 // ===============================
@@ -93,7 +84,6 @@ function showIndicatorStealth(text) {
   if (!indicator) return;
   indicator.textContent = text;
   indicator.style.opacity = "1";
-
   clearTimeout(indicatorTimeout);
   indicatorTimeout = setTimeout(() => {
     indicator.style.opacity = "0";
@@ -132,7 +122,7 @@ function showRetryOnly() {
   requestAnimationFrame(() => retryBtn.style.opacity = "1");
 }
 
-function hideRetryAndShowAceOnly() {
+function resetToAce() {
   awaitingRetry = false;
   retryBtn.style.opacity = "0";
   setTimeout(() => retryBtn.style.display = "none", 200);
@@ -140,12 +130,9 @@ function hideRetryAndShowAceOnly() {
   cardImg.style.opacity = "1";
 }
 
-let suppressClickUntil = 0;
-
 retryBtn.addEventListener("click", e => {
   e.stopPropagation();
-  suppressClickUntil = Date.now() + 450;
-  hideRetryAndShowAceOnly();
+  resetToAce();
 });
 
 // ===============================
@@ -156,28 +143,32 @@ function runDeck() {
 
   if (index >= sequence.length) {
     running = false;
-    setTimeout(showRetryOnly, LAST_CARD_EXIT_DELAY);
+    setTimeout(showRetryOnly, AFTER_FLUSH_DELAY);
     return;
   }
 
-  const currentCard = sequence[index];
+  const card = sequence[index];
 
   cardImg.style.transform = "translateY(14px)";
   cardImg.style.opacity = "0";
 
   clearTimer();
   timer = setTimeout(() => {
-    cardImg.src = `cards/${currentCard}.png`;
-
+    cardImg.src = `cards/${card}.png`;
     requestAnimationFrame(() => {
       cardImg.style.transform = "translateY(0)";
       cardImg.style.opacity = "1";
     });
 
+    const isForce = index === forceIndexThisRun;
     index++;
 
-    const delay =
-      index > sequence.length * 0.65 ? SPEED_END : SPEED_START;
+    const baseDelay =
+      index > forceIndexThisRun ? SPEED_END : SPEED_START;
+
+    const delay = isForce
+      ? baseDelay + FORCE_EXTRA_DELAY
+      : baseDelay;
 
     timer = setTimeout(runDeck, delay);
   }, 40);
@@ -189,18 +180,17 @@ function startDeck() {
   running = true;
   index = 0;
 
-  if (forcedRunsLeft > 0 && forcedOverride) {
-    forceThisRun = forcedOverride;
-    forcedRunsLeft--;
-    if (forcedRunsLeft === 0) forcedOverride = null;
-  } else {
-    forceThisRun = getRandomCard();
-  }
+  const force =
+    forcedRunsLeft > 0 && forcedOverride
+      ? (forcedRunsLeft--, forcedOverride)
+      : randomCard();
+
+  if (forcedRunsLeft === 0) forcedOverride = null;
 
   cardImg.src = "cards/as.png";
   cardImg.style.opacity = "1";
 
-  sequence = prepareDeck(forceThisRun);
+  sequence = prepareDeck(force);
   timer = setTimeout(runDeck, 120);
 }
 
@@ -250,16 +240,12 @@ document.addEventListener("touchend", e => {
         showIndicatorStealth(card.toUpperCase());
       }
     }
-
-    suppressClickUntil = Date.now() + 450;
     return;
   }
 
-  if (Date.now() < suppressClickUntil) return;
   startDeck();
 });
 
 deckEl.addEventListener("click", () => {
-  if (Date.now() < suppressClickUntil) return;
   if (!awaitingRetry) startDeck();
 });
