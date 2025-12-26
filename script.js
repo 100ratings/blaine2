@@ -7,7 +7,7 @@ const FORCE_EXTRA_DELAY = 220;
 
 const SPEED_START = 60;
 const SPEED_END = 38;
-const AFTER_FLUSH_DELAY = 120;
+const AFTER_FLUSH_DELAY = 38;
 
 // ===============================
 // BARALHO — MNEMONICA ROTACIONADA
@@ -249,3 +249,4 @@ document.addEventListener("touchend", e => {
 deckEl.addEventListener("click", () => {
   if (!awaitingRetry) startDeck();
 });
+
