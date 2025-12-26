@@ -2,14 +2,14 @@
 // CONFIGURAÇÃO GERAL
 // ===============================
 
-// Quantas cartas aparecem no total (inclui a forçada)
+// Quantas cartas aparecem no total
 const CARDS_TO_SHOW = 25;
 
 // Quantas cartas ANTES do final o force aparece
 const FORCE_OFFSET_FROM_END = 7;
 
-// Quanto tempo (ms) a CARTA FORÇADA fica parada
-const FORCE_HOLD_MS = 450;
+// Micro pausa SOMENTE no force (0 = sem pausa)
+const FORCE_HOLD_MS = 350;
 
 // ===============================
 // BARALHO — MNEMONICA ROTACIONADA
@@ -24,29 +24,27 @@ const deck = [
 
 const deckEl = document.getElementById("deck");
 const cardImg = document.getElementById("card");
-const indicator = document.getElementById("swipe-indicator");
 
 // ===============================
-// FORCE STATE
+// ESTADO
 // ===============================
 let forcedOverride = null;
 let forcedRunsLeft = 0;
 let forceThisRun = null;
 let forceIndexThisRun = -1;
 
-// ===============================
-// VELOCIDADES
-// ===============================
-const SPEED_START = 60;
-const SPEED_END   = 38;
-const LAST_CARD_EXIT_DELAY = 120;
-
-// ===============================
 let sequence = [];
 let index = 0;
 let running = false;
 let timer = null;
 let awaitingRetry = false;
+
+// ===============================
+// VELOCIDADES
+// ===============================
+const SPEED_START = 60;
+const SPEED_END   = 38;
+const FINAL_FLUSH_DELAY = 40; // último sumiço rápido
 
 // ===============================
 // PRÉ-CARREGAMENTO
@@ -61,7 +59,7 @@ function getRandomCard() {
 }
 
 // ===============================
-// PREPARA SEQUÊNCIA (force + índice)
+// PREPARA SEQUÊNCIA (force NÃO no final)
 // ===============================
 function prepareDeck(force) {
   const pool = deck.filter(c => c !== force);
@@ -72,7 +70,7 @@ function prepareDeck(force) {
   }
 
   const total = CARDS_TO_SHOW;
-  const offset = Math.max(0, Math.min(FORCE_OFFSET_FROM_END, total - 1));
+  const offset = Math.max(1, Math.min(FORCE_OFFSET_FROM_END, total - 2));
   const forceIndex = total - 1 - offset;
 
   const slice = pool.slice(0, total - 1);
@@ -114,6 +112,26 @@ Object.assign(retryBtn.style, {
 
 deckEl.appendChild(retryBtn);
 
+function showRetryOnly() {
+  awaitingRetry = true;
+  cardImg.style.opacity = "0";
+  retryBtn.style.display = "block";
+  requestAnimationFrame(() => retryBtn.style.opacity = "1");
+}
+
+function hideRetryAndShowAceOnly() {
+  awaitingRetry = false;
+  retryBtn.style.opacity = "0";
+  setTimeout(() => retryBtn.style.display = "none", 200);
+  cardImg.src = "cards/as.png";
+  cardImg.style.opacity = "1";
+}
+
+retryBtn.addEventListener("click", e => {
+  e.stopPropagation();
+  hideRetryAndShowAceOnly();
+});
+
 // ===============================
 // ANIMAÇÃO DO BARALHO
 // ===============================
@@ -122,7 +140,13 @@ function runDeck() {
 
   if (index >= sequence.length) {
     running = false;
-    showRetryOnly();
+
+    // SUMIÇO FINAL (evento mais forte)
+    setTimeout(() => {
+      cardImg.style.opacity = "0";
+      showRetryOnly();
+    }, FINAL_FLUSH_DELAY);
+
     return;
   }
 
@@ -142,12 +166,6 @@ function runDeck() {
 
     const isForce = index === forceIndexThisRun;
     index++;
-
-    if (index >= sequence.length) {
-      running = false;
-      setTimeout(showRetryOnly, LAST_CARD_EXIT_DELAY);
-      return;
-    }
 
     const baseDelay =
       index > sequence.length * 0.65 ? SPEED_END : SPEED_START;
@@ -182,57 +200,8 @@ function startDeck() {
 }
 
 // ===============================
-// SWIPE INPUT
+// INPUT (tap)
 // ===============================
-const SWIPE_MIN = 42;
-let sx = 0, sy = 0;
-let swipeBuffer = [];
-
-function decodeSwipe([a, b, c]) {
-  const valueMap = {
-    "UR":"a","RU":"2","RR":"3","RD":"4","DR":"5","DD":"6",
-    "DL":"7","LD":"8","LL":"9","LU":"x","UL":"j","UU":"q","UD":"k"
-  };
-  const suitMap = { "U":"s","R":"h","D":"c","L":"d" };
-
-  return valueMap[a + b] && suitMap[c]
-    ? valueMap[a + b] + suitMap[c]
-    : null;
-}
-
-document.addEventListener("touchstart", e => {
-  if (running || awaitingRetry) return;
-  sx = e.touches[0].clientX;
-  sy = e.touches[0].clientY;
-}, { passive: true });
-
-document.addEventListener("touchend", e => {
-  if (running || awaitingRetry) return;
-
-  const dx = e.changedTouches[0].clientX - sx;
-  const dy = e.changedTouches[0].clientY - sy;
-
-  if (Math.abs(dx) >= SWIPE_MIN || Math.abs(dy) >= SWIPE_MIN) {
-    swipeBuffer.push(
-      Math.abs(dx) > Math.abs(dy)
-        ? dx > 0 ? "R" : "L"
-        : dy > 0 ? "D" : "U"
-    );
-
-    if (swipeBuffer.length === 3) {
-      const card = decodeSwipe(swipeBuffer);
-      swipeBuffer = [];
-      if (card) {
-        forcedOverride = card;
-        forcedRunsLeft = 2;
-      }
-    }
-    return;
-  }
-
-  startDeck();
-});
-
 deckEl.addEventListener("click", () => {
   if (!awaitingRetry) startDeck();
 });
